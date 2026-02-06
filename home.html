@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>AI Fraud Call Detector</title>
+
+  <style>
+    body {
+      background: #0f0624;
+      color: white;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 30px;
+    }
+    button, input {
+      padding: 12px 25px;
+      font-size: 16px;
+      margin: 10px;
+      background: purple;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .box {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 10px;
+      background: #1f1147;
+    }
+    .low { background: green; }
+    .medium { background: orange; }
+    .high { background: darkred; }
+  </style>
+</head>
+
+<body>
+
+  <h1>📞 AI Fraud Call Detector</h1>
+
+  
+  <button onclick="startListening()">🎤 Start Listening</button>
+
+  
+  <br>
+  <input type="file" accept="audio/*" onchange="audioUploaded()" />
+
+  <div class="box">
+    <h3>Live Transcript</h3>
+    <p id="transcript">---</p>
+  </div>
+
+  <div class="box" id="result">
+    Waiting for analysis...
+  </div>
+
+<script>
+  const scamKeywords = [
+    "otp",
+    "account blocked",
+    "urgent",
+    "kyc",
+    "bank verification",
+    "click link",
+    "refund",
+    "prize",
+    "lottery"
+  ];
+
+ 
+  function startListening() {
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      alert("Speech Recognition not supported in this browser");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = "en-IN";
+    recognition.continuous = true;
+
+    recognition.onresult = function(event) {
+      let text = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        text += event.results[i][0].transcript;
+      }
+      document.getElementById("transcript").innerText = text;
+      analyze(text);
+    };
+
+    recognition.start();
+  }
+
+async function audioUploaded(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  document.getElementById("transcript").innerText =
+    "Audio uploaded. Sending to AI engine...";
+
+  const reader = new FileReader();
+
+  reader.onloadend = async () => {
+    const base64Audio = reader.result.split(",")[1];
+
+    const response = await fetch("http://127.0.0.1:8000/detect", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        audio_base64: base64Audio,
+        language: "ta" // ta / en / hi / ml / te
+      })
+    });
+
+    const data = await response.json();
+
+    const resultBox = document.getElementById("result");
+
+    if (data.status === "success") {
+      resultBox.className =
+        "box " + (data.prediction === "AI-GENERATED" ? "high" : "low");
+
+      resultBox.innerHTML = `
+        🔍 Voice Analysis Result<br><br>
+        Prediction: <b>${data.prediction}</b><br>
+        Confidence: <b>${data.confidence}</b><br>
+        Language: <b>${data.language}</b>
+      `;
+    } else {
+      resultBox.innerHTML = "Error analyzing audio";
+    }
+  };
+
+  reader.readAsDataURL(file);
+}
+  
+  function analyze(text) {
+    const lower = text.toLowerCase();
+    let detected = [];
+
+    scamKeywords.forEach(word => {
+      if (lower.includes(word)) detected.push(word);
+    });
+
+    const count = detected.length;
+    let level = "low";
+    let percent = "20%";
+    let message = "🟢 LOW RISK CALL";
+
+    if (count >= 2 && count <= 3) {
+      level = "medium";
+      percent = "60%";
+      message = "🟡 MEDIUM RISK – Be Careful";
+    }
+    if (count >= 4) {
+      level = "high";
+      percent = "90%";
+      message = "🔴 HIGH RISK – POSSIBLE FRAUD CALL";
+    }
+
+    const resultBox = document.getElementById("result");
+    resultBox.className = "box " + level;
+    resultBox.innerHTML = `
+      ${message}<br><br>
+      Risk Level: <b>${percent}</b><br>
+      Keywords Detected: ${detected.join(", ") || "None"}<br><br>
+      Recommendation: ${level === "high" ? "Hang up immediately!" : "Stay alert"}
+    `;
+  }
+</script>
+
+</body>
+</html>
